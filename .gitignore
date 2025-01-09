@@ -1,0 +1,21 @@
+# Ignore all .vagrant directories
+**/.vagrant/
+
+# Ignore Visual Studio Code settings and files
+.vscode/
+*.code-workspace
+
+# Ignore backup and temporary files
+*.bak
+*.tmp
+*.swp
+*.swo
+*.log
+
+# Ignore macOS system files
+.DS_Store
+.AppleDouble
+
+# Ignore Windows system files
+Thumbs.db
+Desktop.ini
