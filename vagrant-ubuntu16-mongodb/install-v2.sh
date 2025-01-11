@@ -25,43 +25,28 @@ function ayuda() {
 # Función para cargar parámetros desde un archivo de configuración
 function cargar_configuracion() {
   local archivo=$1
-  if [[ -f $archivo ]]; then
-    while IFS='=' read -r clave valor || [[ -n "$clave" ]]; do
-      # Validar que la línea tenga el formato clave=valor
-      if [[ -z "$clave" || -z "$valor" || "$clave" =~ ^\s*$ || "$valor" =~ ^\s*$ ]]; then
-        echo "El archivo no tiene un formato válido. Formato esperado: clave=valor"
-        exit 1
-      fi
-      echo "Datos ${clave}: ${valor}"
-      case $clave in
-        user) USUARIO=$valor ;;
-        password) PASSWORD=$valor ;;
-        port) PUERTO_MONGOD=$valor ;;
-      esac
-    done < "$archivo"
-    # Limpieza de posibles caracteres especiales
-    USUARIO=$(echo "$USUARIO" | tr -d '\r\n' | xargs)
-    PASSWORD=$(echo "$PASSWORD" | tr -d '\r\n' | xargs)
-  else
-    echo "El archivo de configuración especificado no existe: $archivo"
-    exit 1
-  fi
+  [[ -f $archivo ]] || { echo "El archivo de configuración no existe: $archivo"; exit 1; }
+  while IFS='=' read -r clave valor || [[ -n $clave ]]; do
+    [[ $clave && $valor ]] || { echo "Formato inválido: clave=valor requerido"; exit 1; }
+    case $clave in
+      user) USUARIO=$valor ;;
+      password) PASSWORD=$valor ;;
+      port) PUERTO_MONGOD=$valor ;;
+    esac
+  done < "$archivo"
+  USUARIO=$(echo "$USUARIO" | tr -d '\r\n' | xargs)
+  PASSWORD=$(echo "$PASSWORD" | tr -d '\r\n' | xargs)
 }
 
 # Función para verificar si el servicio de MongoDB está activo
 function verificar_servicio_mongod() {
   for i in {1..30}; do
-    if mongo --eval "db.runCommand({ connectionStatus: 1 })" &>/dev/null; then
-      echo "El servicio mongod está activo y aceptando conexiones."
-      return 0
-    fi
-    echo "Esperando a que mongod se inicie (intento $i)..."
-    sleep 1
-    if [[ $i -eq 30 ]]; then
-      echo "Error: el servicio mongod no se inició a tiempo o no acepta conexiones."
-      exit 1
-    fi
+    mongo --eval "db.runCommand({ connectionStatus: 1 })" &>/dev/null && { 
+      echo "El servicio mongod está activo."; return 0; 
+    }
+    echo "Esperando a que mongod se inicie (intento $i)..."; sleep 1
   done
+  echo "El servicio mongod no se inició a tiempo."; exit 1
 }
 
 # Gestionar los argumentos
@@ -156,8 +141,6 @@ net:
 security:
   authorization: enabled
 MONGOD_CONF
-
-cat /etc/mongod.conf
 
 # Reiniciar el servicio para aplicar la configuración
 systemctl restart mongod
