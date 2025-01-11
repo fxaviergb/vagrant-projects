@@ -3,9 +3,9 @@ set -e
 
 logger "Arrancando instalación y configuración de MongoDB"
 
-USO="Uso: sudo install-optimized.sh [opciones]
+USO="Uso: sudo install-v2.sh [opciones]
 Ejemplo:
-sudo install-optimized.sh [-u administrador -p password -n 27017] [-f config.ini]
+sudo install-v2.sh [-u administrador -p password -n 27017] [-f config.ini]
 
 Opciones:
   -u usuario
@@ -26,26 +26,45 @@ function ayuda() {
 function cargar_configuracion() {
   local archivo=$1
   if [[ -f $archivo ]]; then
-    while IFS='=' read -r clave valor; do
-    # Validar que la línea tenga el formato clave=valor
+    while IFS='=' read -r clave valor || [[ -n "$clave" ]]; do
+      # Validar que la línea tenga el formato clave=valor
       if [[ -z "$clave" || -z "$valor" || "$clave" =~ ^\s*$ || "$valor" =~ ^\s*$ ]]; then
         echo "El archivo no tiene un formato válido. Formato esperado: clave=valor"
         exit 1
       fi
+      echo "Datos ${clave}: ${valor}"
       case $clave in
         user) USUARIO=$valor ;;
         password) PASSWORD=$valor ;;
         port) PUERTO_MONGOD=$valor ;;
       esac
     done < "$archivo"
+    # Limpieza de posibles caracteres especiales
+    USUARIO=$(echo "$USUARIO" | tr -d '\r\n' | xargs)
+    PASSWORD=$(echo "$PASSWORD" | tr -d '\r\n' | xargs)
   else
     echo "El archivo de configuración especificado no existe: $archivo"
     exit 1
   fi
 }
 
+# Función para verificar si el servicio de MongoDB está activo
+function verificar_servicio_mongod() {
+  for i in {1..30}; do
+    if mongo --eval "db.runCommand({ connectionStatus: 1 })" &>/dev/null; then
+      echo "El servicio mongod está activo y aceptando conexiones."
+      return 0
+    fi
+    echo "Esperando a que mongod se inicie (intento $i)..."
+    sleep 1
+    if [[ $i -eq 30 ]]; then
+      echo "Error: el servicio mongod no se inició a tiempo o no acepta conexiones."
+      exit 1
+    fi
+  done
+}
+
 # Gestionar los argumentos
-echo "Leyendo parametros"
 while getopts ":u:p:n:f:a" OPCION; do
   case ${OPCION} in
     u ) 
@@ -81,7 +100,6 @@ while getopts ":u:p:n:f:a" OPCION; do
 done
 
 # Validar argumentos requeridos
-echo "Verificando validez de parametros recibidos"
 if [ -z "${USUARIO}" ]; then
   ayuda "El usuario debe ser especificado (-u o -f config.ini)"
   exit 1
@@ -97,13 +115,10 @@ if [ -z "${PUERTO_MONGOD}" ]; then
 fi
 
 # Preparar el repositorio de MongoDB y añadir su clave apt
-echo "Obteniendo repositorio de MongoDB"
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 4B7C549A058F8B6B
-#apt-key adv --keyserver hkp://keys.openpgp.org:80 --recv 4B7C549A058F8B6B
 echo "deb [arch=amd64,arm64] https://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/4.2 multiverse" | tee /etc/apt/sources.list.d/mongodb.list
 
 # Instalar MongoDB si no está instalado
-echo "Instalando MongoDB"
 if [[ -z "$(mongo --version 2>/dev/null | grep '4.2.1')" ]]; then
   apt-get -y update && \
   apt-get install -y \
@@ -119,13 +134,11 @@ if [[ -z "$(mongo --version 2>/dev/null | grep '4.2.1')" ]]; then
 fi
 
 # Crear carpetas de logs y datos con sus permisos
-echo "Creando carpetas y permisos de usuario"
 mkdir -p -m 755 /datos/bd /datos/log
 chown mongodb /datos/log /datos/bd
 chgrp mongodb /datos/log /datos/bd
 
 # Crear el archivo de configuración de MongoDB
-echo "Creando archivo de configuracion"
 mv /etc/mongod.conf /etc/mongod.conf.orig
 cat <<MONGOD_CONF > /etc/mongod.conf
 # /etc/mongod.conf
@@ -144,35 +157,24 @@ security:
   authorization: enabled
 MONGOD_CONF
 
-# Reiniciar el servicio para aplicar la configuración
-echo "Reiniciando servicio mongod"
-systemctl restart mongod
+cat /etc/mongod.conf
 
-# Verificar si el servicio está activo
-for i in {1..30}; do
-  if mongo --eval "db.runCommand({ connectionStatus: 1 })" &>/dev/null; then
-    echo "El servicio mongod está activo y aceptando conexiones."
-    break
-  fi
-  echo "Esperando a que mongod se inicie (intento $i)..."
-  sleep 1
-  if [[ $i -eq 30 ]]; then
-    echo "Error: el servicio mongod no se inició a tiempo o no acepta conexiones."
-    exit 1
-  fi
-done
+# Reiniciar el servicio para aplicar la configuración
+systemctl restart mongod
+logger "Esperando a que mongod responda..."
+verificar_servicio_mongod
 
 # Crear el usuario con los datos proporcionados
-echo "Creando usuario"
-mongo admin --eval '
+mongo admin <<CREACION_DE_USUARIO
 db.createUser({
-  user: "'"${USUARIO}"'",
-  pwd: "'"${PASSWORD}"'",
+  user: "${USUARIO}",
+  pwd: "${PASSWORD}",
   roles: [
     { role: "root", db: "admin" },
     { role: "restore", db: "admin" }
   ]
-})'
+})
+CREACION_DE_USUARIO
 
-echo "El usuario ${USUARIO} ha sido creado con éxito!"
+logger "El usuario ${USUARIO} ha sido creado con éxito!"
 exit 0
