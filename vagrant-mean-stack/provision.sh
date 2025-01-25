@@ -14,7 +14,7 @@ server {
   listen 80;
   server_name _;
 
-  location / {
+  location /express {
     proxy_pass http://localhost:3000;
     proxy_http_version 1.1;
     proxy_set_header Upgrade \$http_upgrade;
@@ -23,7 +23,8 @@ server {
     proxy_cache_bypass \$http_upgrade;
   }
 
-  location /angular {
+  location / {
+    rewrite ^/angular(/.*)$ \$1 break;
     proxy_pass http://localhost:4000;
     proxy_http_version 1.1;
     proxy_set_header Upgrade \$http_upgrade;
@@ -57,7 +58,7 @@ app.use(express.json());
 
 // Ruta principal de Express
 app.get('/', (req, res) => {
-  res.send('<html><body style="font-size:18px;">Hola <span style="color:blue;">MUNDO</span>. Express está funcionando correctamente.</body></html>');
+  res.send('<html><body style="font-size:18px;">Hola <span style="color:blue;">MUNDO</span>. Express est\u00e1 funcionando correctamente.</body></html>');
 });
 
 // Ruta adicional para datos de ejemplo
@@ -66,14 +67,11 @@ app.get('/api/data', (req, res) => {
   res.json(data);
 });
 
-// Sirviendo aplicación Angular en /angular
-const angularPath = path.join(__dirname, '../angular-app/dist/angular-app');
-app.use('/angular', express.static(angularPath));
 
 // Puerto de escucha
 const PORT = 3000;
 app.listen(PORT, () => {
-  console.log(\`Server running on http://localhost:\${PORT}\`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
 EOF
 
@@ -88,14 +86,18 @@ echo "PM2 configurado correctamente con Express."
 # Instalar Angular CLI globalmente
 sudo npm install -g @angular/cli
 
-# Crear y construir el proyecto Angular
+# Crear el proyecto Angular y configurarlo para desarrollo
 mkdir -p /home/ubuntu
 cd /home/ubuntu
-ng new angular-app --defaults --skip-git
+sudo ng new angular-app --defaults --skip-git
 cd /home/ubuntu/angular-app
-ng build --output-path=dist/angular-app --base-href=/angular/
+
+echo "Ejecutando el proyecto Angular en modo desarrollo..."
+npm install
+pm2 start "ng serve --host 0.0.0.0 --port 4000 " --name angular-dev
+pm2 save
 
 # Asegurar permisos correctos
 sudo chown -R ubuntu:ubuntu /home/ubuntu/angular-app
 
-echo "Angular configurado correctamente y compilado."
+echo "Angular configurado para desarrollo y expuesto a trav\u00e9s de Nginx."
