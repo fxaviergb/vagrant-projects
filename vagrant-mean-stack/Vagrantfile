@@ -1,0 +1,20 @@
+Vagrant.configure("2") do |config|
+  # Configurar la caja base y el proveedor
+  config.vm.box = "ubuntu/focal64"
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "2048"
+    vb.cpus = 2
+  end
+
+  # Configurar el nombre de la máquina virtual
+  config.vm.hostname = "focal-node-nginx"
+
+  # Configurar la red
+  config.vm.network "private_network", ip: "192.168.56.10"
+
+  # Sincronizar carpeta local para acceder al script
+  config.vm.synced_folder ".", "/vagrant"
+
+  # Provisionar con un script externo
+  config.vm.provision "shell", path: "provision.sh"
+end

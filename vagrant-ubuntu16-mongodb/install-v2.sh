@@ -40,7 +40,7 @@ function cargar_configuracion() {
 
 # Función para verificar si el servicio de MongoDB está activo
 function verificar_servicio_mongod() {
-  for i in {1..30}; do
+  for i in {1..5}; do
     mongo --eval "db.runCommand({ connectionStatus: 1 })" &>/dev/null && { 
       echo "El servicio mongod está activo."; return 0; 
     }
